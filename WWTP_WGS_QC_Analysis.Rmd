@@ -335,8 +335,6 @@ explained_variance_ratio <- 100 * explained_variance_ratio
 # Merge metadata with the PCA data
 pca_data <- as.data.frame(pca_res$x)
 pca_data <- merge(pca_data, reduced_data, by = "row.names")
-
-pca_data
 ```
 
 ```{r}
