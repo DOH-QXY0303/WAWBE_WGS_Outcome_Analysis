@@ -1,25 +1,13 @@
----
-title: "WWTP WGS Run Quality Analysis"
-author: "WA DOH Advanced Molecular Detection Lab"
-date: "`r Sys.Date()`"
-output: github_document
----
-
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(
-  echo    = TRUE,
-  warning = FALSE,
-  message = FALSE,
-  fig.width  = 10,
-  fig.height = 6
-)
-```
+WWTP WGS Run Quality Analysis
+================
+WA DOH Advanced Molecular Detection Lab
+2026-05-28
 
 ------------------------------------------------------------------------
 
 ## 1. Load Libraries
 
-```{r libraries}
+``` r
 library(readxl)
 library(dplyr)
 library(ggplot2)
@@ -35,7 +23,7 @@ library(writexl)
 
 ## 2. Connect to LIMS and Pull Data
 
-```{r lims-connect}
+``` r
 con <- dbConnect(
   odbc(),
   Driver                = "ODBC Driver 18 for SQL Server",
@@ -55,7 +43,7 @@ lims_data <- dbGetQuery(
 
 ## 3. Import and Combine Run Stats Excel File
 
-```{r import-excel}
+``` r
 # Set file path (update as needed)
 file_path <- "/mnt/c/Users/qxy0303/scratch/WAWBE_outcome_analysis/Run Stats.xlsx"
 
@@ -73,7 +61,7 @@ df <- lapply(sheets, function(sheet_name) {
 
 ## 4. Clean and Merge Data
 
-```{r clean-merge}
+``` r
 # Rename columns
 colnames(df)[colnames(df) == "Key_ID"]        <- "PHLAccessionNumber"
 colnames(df)[colnames(df) == ">10X Coverage"] <- "Coverage_10X"
@@ -116,11 +104,24 @@ df <- df[!duplicated(df), ]
 glimpse(df)
 ```
 
+    ## Rows: 683
+    ## Columns: 10
+    ## $ PHLAccessionNumber   <chr> "WA1065052", "WA1065053", "WA1065054", "WA1065061…
+    ## $ `Input Copies`       <dbl> 67.366, 67.275, 41.691, 90.493, 64.155, 31.239, 2…
+    ## $ Library_Concetration <dbl> 5.265, 4.434, 4.575, 4.261, 4.186, 8.978, 3.751, …
+    ## $ Coverage_10X         <dbl> 93.52239, 96.60904, 97.34140, 96.88326, 94.59586,…
+    ## $ `Total Reads`        <dbl> 836866, 971774, 1351420, 1121720, 1001682, 192077…
+    ## $ Coverage             <dbl> 2011.810, 2360.900, 3482.700, 2762.220, 2595.610,…
+    ## $ Run_ID               <dbl> 200, 200, 200, 200, 200, 201, 201, 201, 201, 201,…
+    ## $ QCD                  <chr> "A", "A", "A", "A", "A", NA, NA, "A", NA, NA, "B"…
+    ## $ IC_Group             <chr> "50-100", "50-100", "40-49", "50-100", "50-100", …
+    ## $ WWTPName             <chr> "Mount Vernon WWTP", "Alderwood Picnic Point WWTP…
+
 ------------------------------------------------------------------------
 
-## 5. Correlation: Input Copies vs. \>10X Coverage
+## 5. Correlation: Input Copies vs. \>10X Coverage
 
-```{r correlation}
+``` r
 cor_result <- cor.test(
   df$`Input Copies`,
   df$Coverage_10X,
@@ -130,11 +131,23 @@ cor_result <- cor.test(
 cor_result
 ```
 
-> **Pearson r = `r round(cor_result$estimate, 3)`**, p = `r signif(cor_result$p.value, 3)`
+    ## 
+    ##  Pearson's product-moment correlation
+    ## 
+    ## data:  df$`Input Copies` and df$Coverage_10X
+    ## t = 10.757, df = 675, p-value < 2.2e-16
+    ## alternative hypothesis: true correlation is not equal to 0
+    ## 95 percent confidence interval:
+    ##  0.3163058 0.4450630
+    ## sample estimates:
+    ##       cor 
+    ## 0.3825401
+
+> **Pearson r = 0.383**, p = 5.13^{-25}
 
 ### Scatter Plot
 
-```{r scatter-plot}
+``` r
 ggplot(df, aes(x = `Input Copies`, y = Coverage_10X)) +
   geom_point(alpha = 0.6) +
   geom_hline(yintercept = 90, color = "red", linewidth = 1.5) +
@@ -148,11 +161,13 @@ ggplot(df, aes(x = `Input Copies`, y = Coverage_10X)) +
   theme_minimal()
 ```
 
+![](WWTP_WGS_QC_Analysis_files/figure-gfm/scatter-plot-1.png)<!-- -->
+
 ------------------------------------------------------------------------
 
 ## 6. WWTP-Level Boxplots
 
-```{r wwtp-label-fn}
+``` r
 # Shared label-cleaning function for WWTP names
 clean_wwtp <- function(x) {
   gsub(
@@ -164,7 +179,7 @@ clean_wwtp <- function(x) {
 
 ### Input Copies by WWTP
 
-```{r boxplot-input-copies}
+``` r
 ggplot(df, aes(x = WWTPName, y = `Input Copies`, fill = WWTPName)) +
   geom_boxplot() +
   scale_y_continuous(limits = c(0, 200)) +
@@ -177,9 +192,11 @@ ggplot(df, aes(x = WWTPName, y = `Input Copies`, fill = WWTPName)) +
   )
 ```
 
+![](WWTP_WGS_QC_Analysis_files/figure-gfm/boxplot-input-copies-1.png)<!-- -->
+
 ### Samples with \>10X Coverage by WWTP
 
-```{r boxplot-10x-coverage}
+``` r
 ggplot(df, aes(x = WWTPName, y = Coverage_10X, fill = WWTPName)) +
   geom_boxplot() +
   scale_x_discrete(labels = clean_wwtp) +
@@ -191,13 +208,15 @@ ggplot(df, aes(x = WWTPName, y = Coverage_10X, fill = WWTPName)) +
   )
 ```
 
+![](WWTP_WGS_QC_Analysis_files/figure-gfm/boxplot-10x-coverage-1.png)<!-- -->
+
 ------------------------------------------------------------------------
 
 ## 7. Quality Summary Table by WWTP
 
 ![](images/clipboard-4020351230.png)
 
-```{r quality-summary}
+``` r
 quality_summary <- df %>%
   mutate(
     Quality = case_when(
@@ -220,7 +239,22 @@ quality_summary <- df %>%
 quality_summary
 ```
 
-```{r write-quality-summary, eval=FALSE}
+    ## # A tibble: 30 × 6
+    ##    WWTPName      Total_Samples Percent_A Percent_B Percent_Fail Avg_Input_Copies
+    ##    <chr>                 <int>     <dbl>     <dbl>        <dbl>            <dbl>
+    ##  1 City of Ever…            22      59.1      27.3         13.6             79.7
+    ##  2 Arlington Wa…            19      57.9      36.8          5.3             87.0
+    ##  3 Ellensburg W…            16      50        37.5         12.5             12.9
+    ##  4 King County …            16      50        18.8         31.2             40.0
+    ##  5 Alderwood Pi…            23      47.8      26.1         26.1             48.3
+    ##  6 City of West…            12      41.7      33.3         25               33.6
+    ##  7 Walla Walla …            17      41.2      58.8          0               39.7
+    ##  8 City of Pasc…            15      40        20           40               35.3
+    ##  9 Westside Sew…            27      37        33.3         29.6             40.3
+    ## 10 Tacoma Centr…            19      36.8      42.1         21.1             30  
+    ## # ℹ 20 more rows
+
+``` r
 # Export (run manually as needed)
 write.csv(quality_summary, file = "WWTP_by_Sample_Quality.csv", row.names = FALSE)
 write_xlsx(quality_summary, "quality_summary.xlsx")
@@ -230,7 +264,7 @@ write_xlsx(quality_summary, "quality_summary.xlsx")
 
 ## 8. IC Group × QCD Pivot Table
 
-```{r ic-group-pivot}
+``` r
 df2 <- df %>%
   filter(!is.na(QCD)) %>%
   mutate(
@@ -259,14 +293,32 @@ IC_Group_Table <- df2 %>%
 IC_Group_Table
 ```
 
-```{r write-ic-group, eval=FALSE}
+    ## # A tibble: 30 × 15
+    ##    WWTPName `IC 10-19_B` `IC 10-19_C` `IC 101-1000_A` `IC 40-49_A` `IC 50-100_A`
+    ##    <chr>           <int>        <int>           <int>        <int>         <int>
+    ##  1 Alderwo…            2            2               4            1             6
+    ##  2 Arlingt…            3            0               3            1             6
+    ##  3 Brightw…            2            5               1            1             6
+    ##  4 Chamber…            1            5               0            1             4
+    ##  5 City of…            3            2               1            0             1
+    ##  6 City of…            2            1               3            1             7
+    ##  7 City of…            1            2               1            0             4
+    ##  8 City of…            1            4               1            1             3
+    ##  9 City of…            1            2               4            0             0
+    ## 10 City of…            5            1               2            2             3
+    ## # ℹ 20 more rows
+    ## # ℹ 9 more variables: Other_C <int>, `IC 101-1000_C` <int>,
+    ## #   `IC 50-100_C` <int>, `IC 50-100_B` <int>, `IC 40-49_B` <int>,
+    ## #   Other_B <int>, `IC 10-19_A` <int>, `IC 101-1000_B` <int>, `IC 5-9_B` <int>
+
+``` r
 # Export (run manually as needed)
 write.csv(df2, "WWTP_QCD_Data_2.csv", row.names = FALSE)
 ```
 
-## 9.  Multiple Linear Regression
+## 9. Multiple Linear Regression
 
-```{r MLR}
+``` r
 library(ggcorrplot)
 
 # Convert categorical data to numeric
@@ -285,9 +337,12 @@ corr_matrix = cor(reduced_data, use = "pairwise.complete.obs")
 ggcorrplot(corr_matrix, hc.order = TRUE, type = "lower", lab = TRUE)
 ```
 
-Refine model by removing inter-correlating variables, then construct the linear model
+![](WWTP_WGS_QC_Analysis_files/figure-gfm/MLR-1.png)<!-- -->
 
-```{r}
+Refine model by removing inter-correlating variables, then construct the
+linear model
+
+``` r
 # Fit a multiple linear regression model
 cov10x_model = lm(formula = Coverage_10X ~ 
                     `Input Copies` + 
@@ -301,6 +356,33 @@ cov10x_model = lm(formula = Coverage_10X ~
 hist(cov10x_model$residuals)
 ```
 
-```{r}
+![](WWTP_WGS_QC_Analysis_files/figure-gfm/unnamed-chunk-1-1.png)<!-- -->
+
+``` r
 summary(cov10x_model)
 ```
+
+    ## 
+    ## Call:
+    ## lm(formula = Coverage_10X ~ `Input Copies` + Library_Concetration + 
+    ##     `Total Reads` + Coverage + WWTPName, data = reduced_data)
+    ## 
+    ## Residuals:
+    ##     Min      1Q  Median      3Q     Max 
+    ## -45.504  -8.149   0.276   7.925  29.786 
+    ## 
+    ## Coefficients:
+    ##                        Estimate Std. Error t value Pr(>|t|)    
+    ## (Intercept)           2.883e+01  2.330e+00  12.372  < 2e-16 ***
+    ## `Input Copies`        8.232e-01  8.122e-02  10.135  < 2e-16 ***
+    ## Library_Concetration  1.848e+00  3.329e-01   5.550 4.67e-08 ***
+    ## `Total Reads`        -1.053e-05  1.250e-06  -8.424 3.96e-16 ***
+    ## Coverage              1.058e-02  6.034e-04  17.538  < 2e-16 ***
+    ## WWTPName              1.516e-01  6.930e-02   2.187   0.0292 *  
+    ## ---
+    ## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+    ## 
+    ## Residual standard error: 12.92 on 496 degrees of freedom
+    ##   (4 observations deleted due to missingness)
+    ## Multiple R-squared:  0.6176, Adjusted R-squared:  0.6138 
+    ## F-statistic: 160.2 on 5 and 496 DF,  p-value: < 2.2e-16
