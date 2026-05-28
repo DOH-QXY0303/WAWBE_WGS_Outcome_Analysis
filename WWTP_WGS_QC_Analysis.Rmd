@@ -2,7 +2,7 @@
 title: "WWTP WGS Run Quality Analysis"
 author: "WA DOH Advanced Molecular Detection Lab"
 date: "`r Sys.Date()`"
-output: github_document
+always_allow_html: true
 ---
 
 ```{r setup, include=FALSE}
@@ -264,22 +264,28 @@ IC_Group_Table
 write.csv(df2, "WWTP_QCD_Data_2.csv", row.names = FALSE)
 ```
 
-## 9.  Multiple Linear Regression
+## 9. Multiple Linear Regression
+
+This might be the most straightfoward method to figure out the main contributing factor in the sequencing outcome. This might require subsetting samples and focus on the samples with low input copies to identify variables contributing to sequencing outcome variation.
+
+In addition, categorical data such as WWTP names, needs to be factorized so that lm() function will convert it to dummy variables automatically.
 
 ```{r MLR}
 library(ggcorrplot)
 
-# Convert categorical data to numeric
-df$WWTPName <- as.numeric(as.factor(df$WWTPName))
+
+# Convert categorical data to numeric and factors
+df$WWTPName <- as.factor(df$WWTPName)
 
 # Focus on only sample with low input copies
 reduced_data <- subset(df, `Input Copies`<=40)
+# reduced_data <- subset(df, `Input Copies`>=0)
 
 # Remove the irrelevant columns
-reduced_data <- subset(reduced_data, select = -c( PHLAccessionNumber, QCD, IC_Group))
+reduced_data <- subset(reduced_data, select = -c(PHLAccessionNumber, QCD, IC_Group))
 
-# Compute correlation between variables
-corr_matrix = cor(reduced_data, use = "pairwise.complete.obs")
+# Compute correlation between variables, only works for quantitative variables
+corr_matrix = cor(subset(reduced_data, select = -c(WWTPName)), use = "pairwise.complete.obs")
 
 # Compute and show the  result
 ggcorrplot(corr_matrix, hc.order = TRUE, type = "lower", lab = TRUE)
@@ -301,6 +307,125 @@ cov10x_model = lm(formula = Coverage_10X ~
 hist(cov10x_model$residuals)
 ```
 
+The summarized coefficient and p-value give an estimate of whether a sample is significantly and positively/negatively correlating with sequencing outcomes.
+
 ```{r}
 summary(cov10x_model)
+```
+
+## 10. Principle component analysis
+
+This might help visually separate out data points through dimentionality reduction. Might also be helpful to use interactive ploting tool to overlay additional metadata.
+
+```{r}
+library(plotly)
+
+# Convert factorized categorical data to dummy variables
+reduced_data_num <- model.matrix(~ . - 1, data = reduced_data)
+# Compute PCA
+pca_res <- prcomp(reduced_data_num, scale. = TRUE)
+```
+
+```{r}
+# Extract %variance expained by each component
+explained_variance_ratio <- summary(pca_res)[["importance"]]['Proportion of Variance',]
+explained_variance_ratio <- 100 * explained_variance_ratio
+
+
+# Merge metadata with the PCA data
+pca_data <- as.data.frame(pca_res$x)
+pca_data <- merge(pca_data, reduced_data, by = "row.names")
+
+pca_data
+```
+
+```{r}
+# Convert categorical string labels to a numeric factor for coloring
+wwtp_numeric <- as.numeric(pca_data$WWTPName)
+
+# Axis configuration
+axis_cfg = list(showline = TRUE,
+                gridcolor = '#ffff',
+                ticklen = 4,
+                titlefont = list(size = 13))
+
+# Plot PC components in splom chart
+fig <- plot_ly(data = pca_data) %>%
+  add_trace(
+    type = 'splom',
+    dimensions = list(
+      list(label = paste('PC 1 (', round(explained_variance_ratio[1], 1), '%)', sep = ''), values = ~PC1),
+      list(label = paste('PC 2 (', round(explained_variance_ratio[2], 1), '%)', sep = ''), values = ~PC2),
+      list(label = paste('PC 3 (', round(explained_variance_ratio[3], 1), '%)', sep = ''), values = ~PC3),
+      list(label = paste('PC 4 (', round(explained_variance_ratio[4], 1), '%)', sep = ''), values = ~PC4)
+    ),
+    # Pre-configure the trace container marker settings cleanly
+    marker = list(
+      color = pca_data$Coverage_10X,
+      colorscale = 'Viridis',
+      showscale = TRUE,
+      cmin = min(pca_data$Coverage_10X, na.rm = TRUE),
+      cmax = max(pca_data$Coverage_10X, na.rm = TRUE)
+    )
+  ) %>%
+  style(diagonal = list(visible = FALSE)) %>%
+  layout(
+    legend = list(title = list(text = 'color')),
+    hovermode = 'closest',
+    dragmode = 'select',
+    xaxis = axis_cfg, yaxis = axis_cfg,
+    xaxis2 = axis_cfg, xaxis3 = axis_cfg, xaxis4 = axis_cfg,
+    yaxis2 = axis_cfg, yaxis3 = axis_cfg, yaxis4 = axis_cfg
+  )
+
+
+# Add dropdown menu
+fig <- fig %>% layout(
+  updatemenus = list(
+    list(
+      y = 0.8,
+      type = "dropdown",
+      buttons = list(
+        # Button 1: Coverage 10X
+        list(
+          method = "restyle",
+          args = list(
+            list(
+              "marker.color" = list(pca_data$Coverage_10X),
+              "marker.cmin" = min(pca_data$Coverage_10X, na.rm = TRUE),
+              "marker.cmax" = max(pca_data$Coverage_10X, na.rm = TRUE)
+            )
+          ),
+          label = "Coverage 10X"
+        ),
+        # Button 2: WWTP Names
+        list(
+          method = "restyle",
+          args = list(
+            list(
+              "marker.color" = list(wwtp_numeric),
+              "marker.cmin" = min(wwtp_numeric, na.rm = TRUE),
+              "marker.cmax" = max(wwtp_numeric, na.rm = TRUE)
+            )
+          ),
+          label = "WWTP Names"
+        ),
+        # Button 3: Input Copies
+        list(
+          method = "restyle",
+          args = list(
+            list(
+              "marker.color" = list(pca_data$`Input Copies`),
+              "marker.cmin" = min(pca_data$`Input Copies`, na.rm = TRUE),
+              "marker.cmax" = max(pca_data$`Input Copies`, na.rm = TRUE)
+            )
+          ),
+          label = "Input Copies"
+        )
+      )
+    )
+  )
+)
+
+fig
 ```
